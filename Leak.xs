@@ -11,6 +11,10 @@
 typedef long used_proc _((void *,SV *,long));
 typedef struct hash_s *hash_ptr;
 
+#ifndef DEBUGGING
+#define sv_dump(sv) PerlIO_printf(PerlIO_stderr(), "\n")
+#endif
+
 #define MAX_HASH 1009
 
 static hash_ptr pile = NULL;
@@ -139,6 +143,17 @@ check_sv(void *p, SV *sv, long hwm)
  return hwm+1;
 }
 
+static long
+find_object(void *p, SV *sv, long count)
+{
+ if (sv_isobject(sv))
+  {
+   sv_dump(sv);
+   count++;
+  }
+ return count;
+}
+
 long 
 check_used(hash_ptr **x)
 {hash_ptr *ht = *x;
@@ -163,7 +178,6 @@ check_used(hash_ptr **x)
  return count;
 }
 
-
 MODULE = Devel::Leak	PACKAGE = Devel::Leak
 
 PROTOTYPES: Enable
@@ -185,6 +199,15 @@ hash_ptr *	obj
 CODE:
  {
   RETVAL = check_used(&obj);
+ }
+OUTPUT:
+ RETVAL
+
+IV
+FindObjects()
+CODE:
+ {
+  RETVAL = sv_apply_to_used(NULL, find_object, 0);
  }
 OUTPUT:
  RETVAL

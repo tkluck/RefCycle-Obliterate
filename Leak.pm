@@ -3,7 +3,7 @@ use 5.005;
 use vars qw($VERSION);
 require DynaLoader;
 use base qw(DynaLoader);
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 bootstrap Devel::Leak;
 
@@ -23,7 +23,7 @@ Devel::Leak - Utility for looking for perl objects that are not reclaimed.
 
   ... code that may leak 
 
-  Devel::Leak::CheckSv($handle); 
+  Devel::Leak::CheckSV($handle); 
 
 =head1 DESCRIPTION 
 
@@ -41,7 +41,7 @@ of "things" now allocated.
 
 =head1 CAVEATS
 
-Note that you need a perl built with -DDEBUGING for
+Note that you need a perl built with -DDEBUGGING for
 sv_dump() to print anything, but counts are valid in any perl.
 
 If new "things" I<have> been created, C<CheckSV> may (also) report additional
