@@ -35,7 +35,7 @@ LangDumpVec(char *who, int count, SV **data)
   }
 }
 
-struct hash_s 
+struct hash_s
 {struct hash_s *link;
  SV *sv;
  char *tag;
@@ -112,7 +112,7 @@ long int n;
 static char old[] = "old";
 static char new[] = "new";
 
-static long 
+static long
 note_sv(p,sv, n)
 void *p;
 SV *sv;
@@ -122,7 +122,7 @@ long int n;
  return n+1;
 }
 
-long 
+long
 note_used(hash_ptr **x)
 {
  hash_ptr *ht;
@@ -131,12 +131,12 @@ note_used(hash_ptr **x)
  return sv_apply_to_used(ht, note_sv, 0);
 }
 
-static long 
+static long
 check_sv(void *p, SV *sv, long hwm)
 {
  char *state = lookup(p,sv,new);
  if (state != old)
-  {                           
+  {
    fprintf(stderr,"%s %p : ", state ? state : new, sv);
    sv_dump(sv);
   }
@@ -154,7 +154,7 @@ find_object(void *p, SV *sv, long count)
  return count;
 }
 
-long 
+long
 check_used(hash_ptr **x)
 {hash_ptr *ht = *x;
  long count = sv_apply_to_used(ht, check_sv, 0);
@@ -173,7 +173,7 @@ check_used(hash_ptr **x)
      pile = t;
     }
   }
- free(ht);
+ Safefree(ht);
  *x = NULL;
  return count;
 }

@@ -1,9 +1,9 @@
-package Devel::Leak;    
+package Devel::Leak;
 use 5.005;
 use vars qw($VERSION);
 require DynaLoader;
 use base qw(DynaLoader);
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 bootstrap Devel::Leak;
 
@@ -17,27 +17,27 @@ Devel::Leak - Utility for looking for perl objects that are not reclaimed.
 =head1 SYNOPSIS
 
   use Devel::Leak;
-  ... setup code 
+  ... setup code
 
   my $count = Devel::Leak::NoteSV($handle);
 
-  ... code that may leak 
+  ... code that may leak
 
-  Devel::Leak::CheckSV($handle); 
+  Devel::Leak::CheckSV($handle);
 
-=head1 DESCRIPTION 
+=head1 DESCRIPTION
 
-Devel::Leak has two functions C<NoteSV> and C<CheckSV>. 
+Devel::Leak has two functions C<NoteSV> and C<CheckSV>.
 
 C<NoteSV> walks the perl internal table of allocated SVs (scalar values) - (which
 actually  contains arrays and hashes too), and records their addresses in a
-table. It returns a count of these "things", and stores a pointer to the 
+table. It returns a count of these "things", and stores a pointer to the
 table (which is obtained from the heap using malloc()) in its argument.
 
-C<CheckSV> is passed argument which holds a pointer to a table created by 
+C<CheckSV> is passed argument which holds a pointer to a table created by
 C<NoteSV>. It re-walks the perl-internals and calls sv_dump() for any "things"
-which did not exist when C<NoteSV> was called. It returns a count of the number 
-of "things" now allocated. 
+which did not exist when C<NoteSV> was called. It returns a count of the number
+of "things" now allocated.
 
 =head1 CAVEATS
 
