@@ -1,7 +1,7 @@
 use ExtUtils::MakeMaker;
 use Config;
 
-unless ($Config{'ccflags'} =~ /-DDEBUGGING/)
+if ($] < 5.006 && $Config{'ccflags'} !~ /-DDEBUGGING/)
  {
   warn "This perl is not compiled with -DDEBUGGING - functions restricted\n";
  }

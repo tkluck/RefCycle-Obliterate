@@ -11,7 +11,7 @@
 typedef long used_proc _((void *,SV *,long));
 typedef struct hash_s *hash_ptr;
 
-#ifndef DEBUGGING
+#ifndef sv_dump
 #define sv_dump(sv) PerlIO_printf(PerlIO_stderr(), "\n")
 #endif
 

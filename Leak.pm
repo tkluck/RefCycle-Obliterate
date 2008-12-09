@@ -3,7 +3,7 @@ use 5.005;
 use vars qw($VERSION);
 require DynaLoader;
 use base qw(DynaLoader);
-$VERSION = '0.03';
+$VERSION = '0.04';
 
 bootstrap Devel::Leak;
 
@@ -41,11 +41,13 @@ of "things" now allocated.
 
 =head1 CAVEATS
 
-Note that you need a perl built with -DDEBUGGING for
-sv_dump() to print anything, but counts are valid in any perl.
-
 If new "things" I<have> been created, C<CheckSV> may (also) report additional
 "things" which are allocated by the sv_dump() code.
+
+=head1 NOTES
+
+Note that you perls older than 5.6.0 need to be built with -DDEBUGGING
+for sv_dump() to print anything, but counts are valid in any perl.
 
 =head1 HISTORY
 
