@@ -10,6 +10,7 @@ WriteMakefile(
     'NAME'     => 'RefCycle::Obliterate',
     'clean' => {FILES => "*% *.bak"},
     'dist'     => { COMPRESS => 'gzip -f9', SUFFIX => '.gz' },
-    'VERSION_FROM'  => 'Obliterate.pm'
+    'VERSION_FROM'  => 'Obliterate.pm',
+    'INC' => '-Iuthash/include',
 );
 
