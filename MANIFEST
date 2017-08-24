@@ -1,5 +1,5 @@
-Leak.pm				The perl part (with the docs as pod)
-Leak.xs				C code
+Obliterate.pm			The perl part (with the docs as pod)
+Obliterate.xs			C code
 MANIFEST			This file
 MANIFEST.SKIP			Things to to list here
 Makefile.PL			How to build it

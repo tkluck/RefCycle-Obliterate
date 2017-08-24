@@ -7,9 +7,9 @@ if ($] < 5.006 && $Config{'ccflags'} !~ /-DDEBUGGING/)
  }
 
 WriteMakefile( 
-    'NAME'     => 'Devel::Leak',
+    'NAME'     => 'RefCycle::Obliterate',
     'clean' => {FILES => "*% *.bak"},
     'dist'     => { COMPRESS => 'gzip -f9', SUFFIX => '.gz' },
-    'VERSION_FROM'  => 'Leak.pm'
+    'VERSION_FROM'  => 'Obliterate.pm'
 );
 

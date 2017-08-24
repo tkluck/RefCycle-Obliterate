@@ -1,6 +1,6 @@
 --- #YAML:1.0
-name:                Devel-Leak
-version:             0.04
+name:                RefCycle-Obliterate
+version:             0.01
 abstract:            ~
 license:             ~
 author:              ~

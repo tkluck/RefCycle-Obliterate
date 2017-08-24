@@ -1,5 +1,8 @@
 /*
-  Copyright (c) 1995,1996-1998 Nick Ing-Simmons. All rights reserved.
+  Copyright (c) 1995,1996-1998 Nick Ing-Simmons
+  Copyright (c) 2017 Timo Kluck
+
+  All rights reserved.
   This program is free software; you can redistribute it and/or
   modify it under the same terms as Perl itself.
 */
@@ -178,7 +181,7 @@ check_used(hash_ptr **x)
  return count;
 }
 
-MODULE = Devel::Leak	PACKAGE = Devel::Leak
+MODULE = RefCycle::Obliterate	PACKAGE = RefCycle::Obliterate
 
 PROTOTYPES: Enable
 

@@ -1,11 +1,11 @@
-package Devel::Leak;
-use 5.005;
+package RefCycle::Obliterate;
+use 5.018;
 use vars qw($VERSION);
 require DynaLoader;
 use base qw(DynaLoader);
-$VERSION = '0.04';
+$VERSION = '0.01';
 
-bootstrap Devel::Leak;
+bootstrap RefCycle::Obliterate;
 
 1;
 __END__
@@ -57,7 +57,7 @@ about the perl internals.
 
 =head1 AUTHOR
 
-Nick Ing-Simmons <nick@ni-s.u-net.com>
+Timo Kluck <timo.kluck@booking.com>
 
 =cut
 
