@@ -11,62 +11,19 @@
 #include <perl.h>
 #include <XSUB.h>
 
+#include <uthash.h>
+typedef struct _SV2Refcount {
+    SV *sv;
+    unsigned long refcount;
+    char reachable;
+    UT_hash_handle hh; /* makes this structure hashable */
+} SV2Refcount;
+
 typedef long used_proc _((void *,SV *,long));
-typedef struct hash_s *hash_ptr;
 
 #ifndef sv_dump
 #define sv_dump(sv) PerlIO_printf(PerlIO_stderr(), "\n")
 #endif
-
-#define MAX_HASH 1009
-
-static hash_ptr pile = NULL;
-
-static void
-LangDumpVec(char *who, int count, SV **data)
-{
- int i;
- PerlIO_printf(PerlIO_stderr(), "%s (%d):\n", who, count);
- for (i = 0; i < count; i++)
-  {
-   SV *sv = data[i];
-   if (sv)
-    {
-     PerlIO_printf(PerlIO_stderr(), "%2d ", i);
-     sv_dump(sv);
-    }
-  }
-}
-
-struct hash_s
-{struct hash_s *link;
- SV *sv;
- char *tag;
-};
-
-static char *
-lookup(hash_ptr *ht, SV *sv, void *tag)
-{unsigned hash = ((unsigned long) sv) % MAX_HASH;
- hash_ptr p = ht[hash];
- while (p)
-  {
-   if (p->sv == sv)
-    {char *old = p->tag;
-     p->tag = tag;
-     return old;
-    }
-   p = p->link;
-  }
- if ((p = pile))
-  pile = p->link;
- else
-  p = (hash_ptr) malloc(sizeof(struct hash_s));
- p->link  = ht[hash];
- p->sv    = sv;
- p->tag   = tag;
- ht[hash] = p;
- return NULL;
-}
 
 void
 check_arenas()
@@ -80,7 +37,7 @@ check_arenas()
     {
      if (SvROK(sv) && ((IV) SvANY(sv)) & 1)
       {
-       warn("Odd SvANY for %p @ %p[%d]",sv,sva,(sv-sva));
+       warn("Odd SvANY for %p @ %p[%ld]",sv,sva,(sv-sva));
        abort();
       }
      ++sv;
@@ -112,110 +69,177 @@ long int n;
  return n;
 }
 
-static char old[] = "old";
-static char new[] = "new";
-
-static long
-note_sv(p,sv, n)
-void *p;
-SV *sv;
-long int n;
-{
- lookup(p,sv,old);
- return n+1;
-}
-
 long
-note_used(hash_ptr **x)
-{
- hash_ptr *ht;
- Newz(603, ht, MAX_HASH, hash_ptr);
- *x = ht;
- return sv_apply_to_used(ht, note_sv, 0);
+countsvs(void **p, SV *sv, long count) {
+    return count+1;
 }
 
-static long
-check_sv(void *p, SV *sv, long hwm)
-{
- char *state = lookup(p,sv,new);
- if (state != old)
-  {
-   fprintf(stderr,"%s %p : ", state ? state : new, sv);
-   sv_dump(sv);
-  }
- return hwm+1;
-}
-
-static long
-find_object(void *p, SV *sv, long count)
-{
- if (sv_isobject(sv))
-  {
-   sv_dump(sv);
-   count++;
-  }
- return count;
-}
-
-long
-check_used(hash_ptr **x)
-{hash_ptr *ht = *x;
- long count = sv_apply_to_used(ht, check_sv, 0);
- long i;
- for (i = 0; i < MAX_HASH; i++)
-  {hash_ptr p = ht[i];
-   while (p)
-    {
-     hash_ptr t = p;
-     p = t->link;
-     if (t->tag != new)
-      {
-       LangDumpVec(t->tag ? t->tag : "NUL",1,&t->sv);
-      }
-     t->link = pile;
-     pile = t;
+void
+recordref(SV2Refcount **refcounts, SV *target, int refcount) {
+    SV2Refcount *record = NULL;
+    HASH_FIND_PTR(*refcounts, &target, record);
+    if(!record) {
+        record = (SV2Refcount*)malloc(sizeof(SV2Refcount));
+        record->sv = target;
+        record->reachable = 0;
+        record->refcount = 0;
+        HASH_ADD_PTR(*refcounts, sv, record);
     }
-  }
- Safefree(ht);
- *x = NULL;
- return count;
+    record->refcount+= refcount;
 }
+
+long
+countrefs(SV2Refcount **refcounts, SV *sv, long balance)
+{
+    balance+=SvREFCNT(sv);
+    recordref(refcounts, sv, 0);
+    if(SvROK(sv)) {
+        SV *target = SvRV(sv);
+        SV **item;
+        AV *av;
+        HV *hv;
+        HE *he;
+        if(SvTYPE(target) < SVt_PVAV) { // scalar value
+            recordref(refcounts, target, 1);
+            balance--;
+        } else switch(SvTYPE(target)) {
+        case SVt_PVAV:
+            av = (AV*)target;
+            for(unsigned long i = 0; i <= av_top_index(av); i++) {
+                item = av_fetch(av, i, false);
+                recordref(refcounts, *item, 1);
+                balance--;
+            }
+        break;
+        case SVt_PVHV:
+            hv = (HV*)target;
+            hv_iterinit(hv);
+            while(he = hv_iternext(hv)) {
+                //int len;
+                //char *k = hv_iterkey(he, &len);
+                //fprintf(stderr,"countrefs: Descending into key: ");
+                //write(2, k, len);
+                //fprintf(stderr, "\n");
+                target = hv_iterval(hv, he);
+                recordref(refcounts, target, 1);
+                balance--;
+            }
+        break;
+        case SVt_PV:
+        break;
+        default:
+            fprintf(stderr,"Unhandled type! %d\n", SvTYPE(target));
+        }
+    }
+    return balance;
+}
+
+void
+markrecordreachable(SV2Refcount **refcounts, SV2Refcount *record);
+
+void
+markreachable(SV2Refcount **refcounts, SV *sv) {
+    SV2Refcount *record;
+    HASH_FIND_PTR(*refcounts, &sv, record);
+    if(record) {
+        markrecordreachable(refcounts, record);
+    } else {
+        fprintf(stderr,"Scalar value not recorded???\n");
+        abort();
+    }
+}
+
+void
+markrecordreachable(SV2Refcount **refcounts, SV2Refcount *record) {
+    char already_marked = record->reachable;
+    record->reachable = 1;
+    if(!already_marked && SvROK(record->sv)) {
+        SV *target = SvRV(record->sv);
+        SV **item;
+        AV *av;
+        HV *hv;
+        HE *he;
+        markreachable(refcounts, target);
+        if(SvTYPE(target) < SVt_PVAV) { // scalar value
+            markreachable(refcounts, target);
+        } else switch(SvTYPE(target)) {
+        case SVt_PVAV:
+            av = (AV*)target;
+            for(unsigned long i = 0; i <= av_top_index(av); i++) {
+                item = av_fetch(av, i, false);
+                markreachable(refcounts, *item);
+            }
+        break;
+        case SVt_PVHV:
+            hv = (HV*)target;
+            hv_iterinit(hv);
+            while(he = hv_iternext(hv)) {
+                //int len;
+                //char *k = hv_iterkey(he, &len);
+                //fprintf(stderr,"Reachable: Descending into key: ");
+                //write(2, k, len);
+                //fprintf(stderr, "\n");
+
+                target = hv_iterval(hv, he);
+                markreachable(refcounts, target);
+            }
+        break;
+        case SVt_PV:
+        break;
+        default:
+            fprintf(stderr,"Unhandled type! %d\n", SvTYPE(target));
+        }
+    }
+}
+
+long
+garbage_collect()
+{
+    SV2Refcount *refcounts = NULL;
+    SV2Refcount *record, *tmp;
+
+    sv_apply_to_used(&refcounts, countrefs, 0);
+
+    unsigned long unreachable = 0;
+
+    HASH_ITER(hh, refcounts, record, tmp) {
+        if(SvREFCNT(record->sv) > record->refcount) {
+            markrecordreachable(&refcounts, record);
+        }
+    }
+
+    HASH_ITER(hh, refcounts, record, tmp) {
+        if(!record->reachable && SvTYPE(record->sv) != SVTYPEMASK) {
+            sv_setsv(record->sv, &PL_sv_undef);
+            unreachable++;
+        }
+        HASH_DEL(refcounts, record);
+        free(record);
+    }
+
+    return unreachable;
+}
+
 
 MODULE = RefCycle::Obliterate	PACKAGE = RefCycle::Obliterate
 
 PROTOTYPES: Enable
 
 IV
-NoteSV(obj)
-hash_ptr *	obj = NO_INIT
+obliterate()
 CODE:
  {
-  RETVAL = note_used(&obj);
- }
-OUTPUT:
- obj
- RETVAL
-
-IV
-CheckSV(obj)
-hash_ptr *	obj
-CODE:
- {
-  RETVAL = check_used(&obj);
+  RETVAL = garbage_collect();
  }
 OUTPUT:
  RETVAL
 
 IV
-FindObjects()
+scalar_value_count()
 CODE:
  {
-  RETVAL = sv_apply_to_used(NULL, find_object, 0);
+  RETVAL = sv_apply_to_used(NULL, countsvs, 0);
  }
 OUTPUT:
  RETVAL
-
-void
-check_arenas()
-
 

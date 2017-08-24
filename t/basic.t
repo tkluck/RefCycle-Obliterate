@@ -1,16 +1,37 @@
 use Test;
-plan test => 3;
-eval { require Devel::Leak };
+plan test => 8;
+eval { require RefCycle::Obliterate };
 ok($@, "", "loading module");
-eval { import Devel::Leak };
+eval { import RefCycle::Obliterate };
 ok($@, "", "running import");
-@somewhere = ();
-my $count = Devel::Leak::NoteSV($handle);
-print "$count SVs so far\n";
-for my $i (1..10)
- {
-  @somewhere = qw(one two);
- }
-my $now = Devel::Leak::CheckSV($handle);
-ok($now, $count+2, "Number of SVs created unexpected");
+
+# --------------------------------------------
+#
+# hashrefs
+#
+# --------------------------------------------
+my $foo = {}; $foo->{foo} = $foo;
+
+ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
+
+undef $foo;
+
+ok( RefCycle::Obliterate::obliterate(), 1, "Not destroying unreachable reference cycles?");
+
+ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
+
+# --------------------------------------------
+#
+# arrayrefs
+#
+# --------------------------------------------
+my $bar = []; push @$bar, { foo => $bar };
+
+ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
+
+undef $bar;
+
+ok( RefCycle::Obliterate::obliterate(), 2, "Not destroying unreachable reference cycles?");
+
+ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
 
