@@ -16,7 +16,8 @@ ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycle
 
 undef $foo;
 
-ok( RefCycle::Obliterate::obliterate(), 1, "Not destroying unreachable reference cycles?");
+ok( RefCycle::Obliterate::obliterate(), 2, "Not destroying unreachable reference cycles?");
+
 
 ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
 
@@ -25,7 +26,7 @@ ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycle
 # arrayrefs
 #
 # --------------------------------------------
-my $bar = []; push @$bar, { foo => $bar };
+my $bar = []; push @$bar, $bar;
 
 ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
 
@@ -43,8 +44,6 @@ ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycle
 SCOPE: {
 my %foo; $foo{foo} = \%foo;
 ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
-use Data::Dumper;
-print STDERR Dumper(\%foo);
 }
 
 ok( RefCycle::Obliterate::obliterate(), 1, "Not destroying unreachable reference cycles?");
@@ -59,14 +58,7 @@ ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycle
 SCOPE: {
 my @bar; push @bar, { foo => \@bar };
 ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
-use Data::Dumper;
-print STDERR Dumper(\@bar);
-$bar = \@bar;
 }
-
-ok( RefCycle::Obliterate::obliterate(), 0, "Destroying reachable reference cycles?");
-
-undef $bar;
 
 ok( RefCycle::Obliterate::obliterate(), 1, "Not destroying unreachable reference cycles?");
 

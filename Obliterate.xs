@@ -25,26 +25,6 @@ typedef long used_proc _((void *,SV *,long));
 #define sv_dump(sv) PerlIO_printf(PerlIO_stderr(), "\n")
 #endif
 
-void
-check_arenas()
-{
- SV *sva;
- for (sva = PL_sv_arenaroot; sva; sva = (SV *) SvANY(sva))
-  {
-   SV *sv = sva + 1;
-   SV *svend = &sva[SvREFCNT(sva)];
-   while (sv < svend)
-    {
-     if (SvROK(sv) && ((IV) SvANY(sv)) & 1)
-      {
-       warn("Odd SvANY for %p @ %p[%ld]",sv,sva,(sv-sva));
-       abort();
-      }
-     ++sv;
-    }
-  }
-}
-
 long int
 sv_apply_to_used(p, proc,n)
 void *p;
@@ -80,9 +60,8 @@ recordref(SV2Refcount **refcounts, SV *target, int refcount) {
     HASH_FIND_PTR(*refcounts, &target, record);
     if(!record) {
         record = (SV2Refcount*)malloc(sizeof(SV2Refcount));
+        memset(record, 0, sizeof(SV2Refcount));
         record->sv = target;
-        record->reachable = 0;
-        record->refcount = 0;
         HASH_ADD_PTR(*refcounts, sv, record);
     }
     record->refcount+= refcount;
@@ -93,101 +72,110 @@ countrefs(SV2Refcount **refcounts, SV *sv, long balance)
 {
     balance+=SvREFCNT(sv);
     recordref(refcounts, sv, 0);
-    if(SvROK(sv)) {
+    if(SvROK(sv) && !SvWEAKREF(sv)) {
         SV *target = SvRV(sv);
+        recordref(refcounts, target, 1);
+        balance--;
+    } else {
+        SV *val;
         SV **item;
         AV *av;
         HV *hv;
         HE *he;
-        if(SvTYPE(target) < SVt_PVAV) { // scalar value
-            recordref(refcounts, target, 1);
-            balance--;
-        } else switch(SvTYPE(target)) {
+        if(SvTYPE(sv) < SVt_PVAV) { // scalar value
+            // pass
+        } else switch(SvTYPE(sv)) {
         case SVt_PVAV:
-            av = (AV*)target;
-            for(unsigned long i = 0; i <= av_top_index(av); i++) {
-                item = av_fetch(av, i, false);
-                recordref(refcounts, *item, 1);
-                balance--;
+            av = (AV*)sv;
+            if(AvREAL(av) && !SvMAGICAL(av)) {
+                for(long i = 0; i <= av_top_index(av); i++) {
+                    item = av_fetch(av, i, false);
+                    if(item) {
+                        recordref(refcounts, *item, 1);
+                        balance--;
+                    }
+                }
             }
         break;
         case SVt_PVHV:
-            hv = (HV*)target;
-            hv_iterinit(hv);
-            while(he = hv_iternext(hv)) {
-                //int len;
-                //char *k = hv_iterkey(he, &len);
-                //fprintf(stderr,"countrefs: Descending into key: ");
-                //write(2, k, len);
-                //fprintf(stderr, "\n");
-                target = hv_iterval(hv, he);
-                recordref(refcounts, target, 1);
-                balance--;
+            hv = (HV*)sv;
+            if(!SvMAGICAL(hv)) {
+                hv_iterinit(hv);
+                int i = 1;
+                while(he = hv_iternext(hv)) {
+                    val = hv_iterval(hv, he);
+                    if(val > 10000) { // HUH???
+                        recordref(refcounts, val, 1);
+                        balance--;
+                    }
+                }
             }
         break;
-        case SVt_PV:
-        break;
-        default:
-            fprintf(stderr,"Unhandled type! %d\n", SvTYPE(target));
+        //default:
+        //    fprintf(stderr,"Unhandled type! %d\n", SvTYPE(sv));
         }
     }
     return balance;
 }
 
 void
-markrecordreachable(SV2Refcount **refcounts, SV2Refcount *record);
+markrecordreachable(SV2Refcount *refcounts, SV2Refcount *record);
 
 void
-markreachable(SV2Refcount **refcounts, SV *sv) {
-    SV2Refcount *record;
-    HASH_FIND_PTR(*refcounts, &sv, record);
+markreachable(SV2Refcount *refcounts, SV *sv) {
+    SV2Refcount *record = NULL;
+    HASH_FIND_PTR(refcounts, &sv, record);
     if(record) {
         markrecordreachable(refcounts, record);
     } else {
-        fprintf(stderr,"Scalar value not recorded???\n");
+        fprintf(stderr,"Scalar value SV(%p) not recorded???\n", sv);
         abort();
     }
 }
 
 void
-markrecordreachable(SV2Refcount **refcounts, SV2Refcount *record) {
+markrecordreachable(SV2Refcount *refcounts, SV2Refcount *record) {
     char already_marked = record->reachable;
     record->reachable = 1;
-    if(!already_marked && SvROK(record->sv)) {
-        SV *target = SvRV(record->sv);
-        SV **item;
-        AV *av;
-        HV *hv;
-        HE *he;
-        markreachable(refcounts, target);
-        if(SvTYPE(target) < SVt_PVAV) { // scalar value
+    if(!already_marked) {
+        if(SvROK(record->sv)) {
+            SV *target = SvRV(record->sv);
             markreachable(refcounts, target);
-        } else switch(SvTYPE(target)) {
-        case SVt_PVAV:
-            av = (AV*)target;
-            for(unsigned long i = 0; i <= av_top_index(av); i++) {
-                item = av_fetch(av, i, false);
-                markreachable(refcounts, *item);
+        } else {
+            SV *val;
+            SV **item;
+            AV *av;
+            HV *hv;
+            HE *he;
+            if(SvTYPE(record->sv) < SVt_PVAV) { // scalar value
+                // pass
+            } else switch(SvTYPE(record->sv)) {
+            case SVt_PVAV:
+                av = (AV*)record->sv;
+                if(AvREAL(av) && !SvMAGICAL(av)) {
+                    for(long i = 0; i <= av_top_index(av); i++) {
+                        item = av_fetch(av, i, false);
+                        if(item) {
+                            markreachable(refcounts, *item);
+                        }
+                    }
+                }
+            break;
+            case SVt_PVHV:
+                hv = (HV*)record->sv;
+                if(!SvMAGICAL(hv)) {
+                    hv_iterinit(hv);
+                    while(he = hv_iternext(hv)) {
+                        val = hv_iterval(hv, he);
+                        if(val > 10000) { // HUH???
+                            markreachable(refcounts, val);
+                        }
+                    }
+                }
+            break;
+            //default:
+            //    fprintf(stderr,"Unhandled type! %d\n", SvTYPE(record->sv));
             }
-        break;
-        case SVt_PVHV:
-            hv = (HV*)target;
-            hv_iterinit(hv);
-            while(he = hv_iternext(hv)) {
-                //int len;
-                //char *k = hv_iterkey(he, &len);
-                //fprintf(stderr,"Reachable: Descending into key: ");
-                //write(2, k, len);
-                //fprintf(stderr, "\n");
-
-                target = hv_iterval(hv, he);
-                markreachable(refcounts, target);
-            }
-        break;
-        case SVt_PV:
-        break;
-        default:
-            fprintf(stderr,"Unhandled type! %d\n", SvTYPE(target));
         }
     }
 }
@@ -203,14 +191,23 @@ garbage_collect()
     unsigned long unreachable = 0;
 
     HASH_ITER(hh, refcounts, record, tmp) {
-        if(SvREFCNT(record->sv) > record->refcount) {
-            markrecordreachable(&refcounts, record);
+        if((SvREFCNT(record->sv) > record->refcount)) {
+            markrecordreachable(refcounts, record);
         }
     }
 
     HASH_ITER(hh, refcounts, record, tmp) {
         if(!record->reachable && SvTYPE(record->sv) != SVTYPEMASK) {
-            sv_setsv(record->sv, &PL_sv_undef);
+            if(SvROK(record->sv)) {
+                sv_unref(record->sv);
+            } else switch(SvTYPE(record->sv)) {
+                case SVt_PVAV:
+                    av_clear((AV*)record->sv);
+                    break;
+                case SVt_PVHV:
+                    hv_clear((HV*)record->sv);
+                    break;
+            }
             unreachable++;
         }
         HASH_DEL(refcounts, record);
